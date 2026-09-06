@@ -1,0 +1,29 @@
+# ── Core (pinned, do not upgrade without CR) ─────────────────────────
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic==2.11.7
+openai>=1.40.0,<2
+psycopg[binary]>=3.2,<4
+psycopg-pool>=3.2,<4
+lunar-vn>=1.1.1
+python-dotenv>=1.0,<2
+httpx>=0.27,<0.29
+jinja2>=3.1,<4
+python-multipart>=0.0.9,<1
+
+# ── Test ─────────────────────────────────────────────────────────────
+pytest>=8.0,<9
+
+# ── Admin portal ─────────────────────────────────────────────────────
+streamlit>=1.40,<2
+
+# ── V9 expansion: Observability ──────────────────────────────────────
+sentry-sdk[fastapi]==2.14.0       # error tracking (no-op if SENTRY_DSN unset)
+
+# ── V9 expansion: Storage (R2) ───────────────────────────────────────
+boto3==1.35.0                      # Cloudflare R2 (S3-compatible) — production
+
+# ── V9 expansion: Image validation (Slice 2) ─────────────────────────
+Pillow==10.4.0                     # image processing, validation, rendering
+opencv-python-headless==4.10.0.84  # blur detection (Laplacian) + brightness
+python-magic==0.4.27               # MIME type validation

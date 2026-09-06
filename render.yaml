@@ -1,0 +1,500 @@
+# Demo Bot V9.2 — Render.com IaC
+# Root Directory on Render: backend/
+#
+# DEPLOY GUIDE:
+#   1. Set all `sync: false` env vars in Render Dashboard before first deploy.
+#   2. DATABASE_URL: use the Render Postgres internal connection string.
+#   3. Web service handles DB bootstrap (migrations 001–034) on startup.
+#   4. Worker service must be deployed AFTER web service is healthy.
+#
+# Plans: both services require paid plan (bot must not sleep).
+#   starter = $7/month each. Worker requires paid plan on Render.
+
+services:
+  # ── Web / API (FastAPI) ───────────────────────────────────────────────────
+  - type: web
+    name: DEMO-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/render-start.sh
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      # Non-secret config (hardcoded here)
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RUN_WORKER
+        value: "0"
+      - key: SKIP_DB_BOOTSTRAP
+        value: "0"
+      # Public prod: debug routes return 404 unless exactly "1"
+      - key: DEBUG_CHAT_ENABLED
+        value: "0"
+      - key: ADMIN_COOKIE_SECURE
+        value: "1"
+      # Cost ceilings (locked 2026-06-01)
+      - key: CAP_MODEL_CALLS_SESSION
+        value: "12"
+      - key: CAP_MODEL_CALLS_DAY_REGULAR
+        value: "30"
+      - key: CAP_IMAGE_ANALYZE_DAY
+        value: "3"
+      - key: CAP_RENDERS_DAY
+        value: "2"
+      - key: CAP_VND_DAY_REGULAR
+        value: "15000"
+      - key: CAP_VND_DAY_SUPPORTER
+        value: "50000"
+      - key: CAP_TOKENS_DAY_REGULAR
+        value: "250000"
+      - key: GRACE_FOLLOWUP_COUNT
+        value: "3"
+      - key: VND_USD_EXCHANGE_RATE
+        value: "25000"
+      # Storage backend (r2 = Cloudflare R2, disk = local only)
+      - key: STORAGE_BACKEND
+        value: r2
+      # Secrets — set these in Render Dashboard, do NOT put values here
+      - key: DATABASE_URL
+        fromDatabase:
+          name: DEMO-db-v2
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: OPENAI_MODEL_TEXT
+        sync: false
+      - key: OPENAI_MODEL_MULTIMODAL
+        sync: false
+      - key: OPENAI_MODEL_TEASER
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: FB_VERIFY_TOKEN
+        sync: false
+      - key: USER_HASH_HMAC_SECRET
+        sync: false
+      - key: MESSENGER_PART_2_BANK_BLOCK
+        sync: false
+      - key: MESSENGER_DONATE_QR_PATH
+        value: assets/messenger_donate_qr.jpg
+      - key: MESSENGER_PART_3_CEO_NOTE
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        sync: false
+      - key: ADMIN_BOOTSTRAP_PASSWORD
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      # Cloudflare R2 credentials (set in dashboard)
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      # Support CTA Shopee links (JSON array, max 5)
+      - key: MESSENGER_SHOPEE_LINKS_JSON
+        sync: false
+      - key: QUEUED_ACK_ENABLED
+        value: "0"
+      - key: MULTIMODAL_ENABLED
+        sync: false
+      # Premium Trigger + CTA arbitration (Hồ Sơ Chuyên Sâu nurture / handoff)
+      - key: PREMIUM_TRIGGER_ENABLED
+        value: "1"
+      - key: PREMIUM_V2_DEV_TRIGGER_ENABLED
+        value: "1"
+      - key: PAGE_OWNER_PREMIUM_GRANT_ENABLED
+        value: "1"
+      # FREE tier daily quota — required on web + both workers (enforced in chat_turn)
+      - key: FREE_DAILY_ASTROLOGY_LIMIT_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT
+        value: "5"
+      # Deploy metadata (auto-set by Render or leave empty)
+      - key: GIT_SHA
+        sync: false
+      - key: BUILD_TIME
+        sync: false
+
+  # ── Interactive Worker (chat_turn only — latency critical) ─────────────────
+  # IMPORTANT: deploy this AFTER web service is healthy (DB bootstrap must finish first).
+  - type: worker
+    name: DEMO-worker-chat
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/render-worker-start.sh
+    plan: starter
+    envVars:
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RUN_WORKER
+        value: "0"
+      - key: SKIP_DB_BOOTSTRAP
+        value: "1"
+      - key: WORKER_KINDS
+        value: chat_turn
+      - key: WORKER_CONCURRENCY
+        value: "10"
+      - key: DB_POOL_MAX
+        value: "12"
+      - key: WORKER_POLL_INTERVAL_SEC
+        value: "2.0"
+      - key: STORAGE_BACKEND
+        value: r2
+      # Cost ceilings (same as web)
+      - key: CAP_MODEL_CALLS_SESSION
+        value: "12"
+      - key: CAP_MODEL_CALLS_DAY_REGULAR
+        value: "30"
+      - key: CAP_IMAGE_ANALYZE_DAY
+        value: "3"
+      - key: CAP_RENDERS_DAY
+        value: "2"
+      - key: CAP_VND_DAY_REGULAR
+        value: "15000"
+      - key: CAP_VND_DAY_SUPPORTER
+        value: "50000"
+      - key: CAP_TOKENS_DAY_REGULAR
+        value: "250000"
+      - key: GRACE_FOLLOWUP_COUNT
+        value: "3"
+      - key: VND_USD_EXCHANGE_RATE
+        value: "25000"
+      # Secrets (same pool as web — set in Render Dashboard)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: DEMO-db-v2
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: OPENAI_MODEL_TEXT
+        sync: false
+      - key: OPENAI_MODEL_MULTIMODAL
+        sync: false
+      - key: OPENAI_MODEL_TEASER
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: USER_HASH_HMAC_SECRET
+        sync: false
+      - key: MESSENGER_PART_2_BANK_BLOCK
+        sync: false
+      - key: MESSENGER_DONATE_QR_PATH
+        value: assets/messenger_donate_qr.jpg
+      - key: SENTRY_DSN
+        sync: false
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      - key: MESSENGER_SHOPEE_LINKS_JSON
+        sync: false
+      - key: QUEUED_ACK_ENABLED
+        value: "0"
+      - key: MULTIMODAL_ENABLED
+        sync: false
+      - key: PREMIUM_TRIGGER_ENABLED
+        value: "1"
+      - key: PREMIUM_V2_DEV_TRIGGER_ENABLED
+        value: "1"
+      # FREE tier daily quota — chat_turn worker enforces/charges usage
+      - key: FREE_DAILY_ASTROLOGY_LIMIT_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT
+        value: "5"
+
+  # ── Background Worker (generation, render, cleanup) ───────────────────────
+  # Processes: generate_overview_bundle, premium_v2_after_return, render_*,
+  #            analyze_image, analyze_combined, verify_donate, cleanup, cleanup_assets
+  # IMPORTANT: deploy this AFTER web service is healthy (DB bootstrap must finish first).
+  - type: worker
+    name: DEMO-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/render-worker-start.sh
+    plan: starter
+    envVars:
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RUN_WORKER
+        value: "0"
+      - key: SKIP_DB_BOOTSTRAP
+        value: "1"
+      - key: WORKER_KINDS
+        value: generate_overview_bundle,premium_v2_after_return,render_reading,render_asset,analyze_image,analyze_combined,verify_donate,cleanup,cleanup_assets
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: WORKER_POLL_INTERVAL_SEC
+        value: "2.0"
+      - key: STORAGE_BACKEND
+        value: r2
+      # Cost ceilings (same as web)
+      - key: CAP_MODEL_CALLS_SESSION
+        value: "12"
+      - key: CAP_MODEL_CALLS_DAY_REGULAR
+        value: "30"
+      - key: CAP_IMAGE_ANALYZE_DAY
+        value: "3"
+      - key: CAP_RENDERS_DAY
+        value: "2"
+      - key: CAP_VND_DAY_REGULAR
+        value: "15000"
+      - key: CAP_VND_DAY_SUPPORTER
+        value: "50000"
+      - key: CAP_TOKENS_DAY_REGULAR
+        value: "250000"
+      - key: GRACE_FOLLOWUP_COUNT
+        value: "3"
+      - key: VND_USD_EXCHANGE_RATE
+        value: "25000"
+      # Secrets (same pool as web — set in Render Dashboard)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: DEMO-db-v2
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: OPENAI_MODEL_TEXT
+        sync: false
+      - key: OPENAI_MODEL_MULTIMODAL
+        sync: false
+      - key: OPENAI_MODEL_TEASER
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: USER_HASH_HMAC_SECRET
+        sync: false
+      - key: MESSENGER_PART_2_BANK_BLOCK
+        sync: false
+      - key: MESSENGER_DONATE_QR_PATH
+        value: assets/messenger_donate_qr.jpg
+      - key: SENTRY_DSN
+        sync: false
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      - key: MESSENGER_SHOPEE_LINKS_JSON
+        sync: false
+      - key: QUEUED_ACK_ENABLED
+        value: "0"
+      - key: MULTIMODAL_ENABLED
+        sync: false
+      - key: PREMIUM_TRIGGER_ENABLED
+        value: "1"
+      - key: PREMIUM_V2_DEV_TRIGGER_ENABLED
+        value: "1"
+      # FREE tier daily quota — quota CTA post-delivery runs in background worker
+      - key: FREE_DAILY_ASTROLOGY_LIMIT_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT
+        value: "5"
+
+  # ── Send-Asset Delivery Worker (send_asset only — decoupled from render pipeline) ─
+  # Handles Messenger image delivery independently so long renders don't block delivery.
+  # IMPORTANT: deploy this AFTER web service is healthy (DB bootstrap must finish first).
+  - type: worker
+    name: DEMO-worker-send
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/render-worker-start.sh
+    plan: starter
+    envVars:
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RUN_WORKER
+        value: "0"
+      - key: SKIP_DB_BOOTSTRAP
+        value: "1"
+      - key: WORKER_KINDS
+        value: send_asset
+      - key: WORKER_CONCURRENCY
+        value: "10"
+      - key: DB_POOL_MAX
+        value: "12"
+      - key: WORKER_POLL_INTERVAL_SEC
+        value: "2.0"
+      - key: STORAGE_BACKEND
+        value: r2
+      # Cost ceilings (same as web)
+      - key: CAP_MODEL_CALLS_SESSION
+        value: "12"
+      - key: CAP_MODEL_CALLS_DAY_REGULAR
+        value: "30"
+      - key: CAP_IMAGE_ANALYZE_DAY
+        value: "3"
+      - key: CAP_RENDERS_DAY
+        value: "2"
+      - key: CAP_VND_DAY_REGULAR
+        value: "15000"
+      - key: CAP_VND_DAY_SUPPORTER
+        value: "50000"
+      - key: CAP_TOKENS_DAY_REGULAR
+        value: "250000"
+      - key: GRACE_FOLLOWUP_COUNT
+        value: "3"
+      - key: VND_USD_EXCHANGE_RATE
+        value: "25000"
+      # Secrets (same pool as web — set in Render Dashboard)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: DEMO-db-v2
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: OPENAI_MODEL_TEXT
+        sync: false
+      - key: OPENAI_MODEL_MULTIMODAL
+        sync: false
+      - key: OPENAI_MODEL_TEASER
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: USER_HASH_HMAC_SECRET
+        sync: false
+      - key: MESSENGER_PART_2_BANK_BLOCK
+        sync: false
+      - key: MESSENGER_DONATE_QR_PATH
+        value: assets/messenger_donate_qr.jpg
+      - key: SENTRY_DSN
+        sync: false
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      - key: MESSENGER_SHOPEE_LINKS_JSON
+        sync: false
+      - key: QUEUED_ACK_ENABLED
+        value: "0"
+      - key: MULTIMODAL_ENABLED
+        sync: false
+      - key: PREMIUM_TRIGGER_ENABLED
+        value: "1"
+      - key: PREMIUM_V2_DEV_TRIGGER_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT
+        value: "5"
+
+  # ── Premium Interpretation Worker (compile only — long-running LLM jobs) ───
+  # IMPORTANT: deploy this AFTER web service is healthy (DB bootstrap must finish first).
+  - type: worker
+    name: premium-interpretation-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/render-worker-start.sh
+    plan: starter
+    envVars:
+      - key: LOG_LEVEL
+        value: INFO
+      - key: RUN_WORKER
+        value: "0"
+      - key: SKIP_DB_BOOTSTRAP
+        value: "1"
+      - key: WORKER_KINDS
+        value: compile_premium_interpretation
+      - key: WORKER_CONCURRENCY
+        value: "2"
+      - key: WORKER_POLL_INTERVAL_SEC
+        value: "2.0"
+      - key: STORAGE_BACKEND
+        value: r2
+      # Cost ceilings (same as web)
+      - key: CAP_MODEL_CALLS_SESSION
+        value: "12"
+      - key: CAP_MODEL_CALLS_DAY_REGULAR
+        value: "30"
+      - key: CAP_IMAGE_ANALYZE_DAY
+        value: "3"
+      - key: CAP_RENDERS_DAY
+        value: "2"
+      - key: CAP_VND_DAY_REGULAR
+        value: "15000"
+      - key: CAP_VND_DAY_SUPPORTER
+        value: "50000"
+      - key: CAP_TOKENS_DAY_REGULAR
+        value: "250000"
+      - key: GRACE_FOLLOWUP_COUNT
+        value: "3"
+      - key: VND_USD_EXCHANGE_RATE
+        value: "25000"
+      # Secrets (same pool as web — set in Render Dashboard)
+      - key: DATABASE_URL
+        fromDatabase:
+          name: DEMO-db-v2
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        sync: false
+      - key: OPENAI_MODEL_TEXT
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: USER_HASH_HMAC_SECRET
+        sync: false
+      - key: MESSENGER_PART_2_BANK_BLOCK
+        sync: false
+      - key: MESSENGER_DONATE_QR_PATH
+        value: assets/messenger_donate_qr.jpg
+      - key: SENTRY_DSN
+        sync: false
+      - key: CLOUDFLARE_R2_ENDPOINT
+        sync: false
+      - key: CLOUDFLARE_R2_ACCESS_KEY_ID
+        sync: false
+      - key: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: CLOUDFLARE_R2_BUCKET
+        sync: false
+      - key: MESSENGER_SHOPEE_LINKS_JSON
+        sync: false
+      - key: QUEUED_ACK_ENABLED
+        value: "0"
+      - key: MULTIMODAL_ENABLED
+        sync: false
+      - key: PREMIUM_TRIGGER_ENABLED
+        value: "1"
+      - key: PREMIUM_V2_DEV_TRIGGER_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT_ENABLED
+        value: "1"
+      - key: FREE_DAILY_ASTROLOGY_LIMIT
+        value: "5"
+
+# ── Database ────────────────────────────────────────────────────────────────
+# Replaces a prior DEMO-db instance. Paid Basic-256mb instance — reconciled 2026-08-04.
+databases:
+  - name: DEMO-db-v2
+    region: oregon
+    # NOTE: plan string "basic-256mb" matches Render's published Blueprint specification
+    # (consulted 2026-08-04) but has not been confirmed by an actual blueprint sync.
+    # Published docs can lag the platform. An invalid plan literal will cause a blueprint
+    # sync to fail. Confirm by running a sync before next blueprint deploy.
+    plan: basic-256mb
+    databaseName: DEMO
+    postgresMajorVersion: "16"
